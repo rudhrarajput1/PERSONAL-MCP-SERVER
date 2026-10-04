@@ -1,22 +1,3 @@
-"""
-Personal MCP Server
----------------------------
-A growing MCP server exposing your personal projects as tools any
-MCP-compatible client (e.g. Claude Desktop) can call.
-
-Currently wraps the AI News Widget (fetching AI/ML/Tech headlines,
-saving/starring, searching saved news). Planned: tools for the
-offline AI fallback system (local Ollama chat), and more as new
-personal projects are added — each project's tools should live in
-their own clearly-named section below.
-
-Run directly for local testing:
-    python3 personal_ai_hub_mcp_server.py
-
-Bookmarks are persisted to bookmarks.json in the same directory,
-matching the format used by the original Tkinter widget.
-"""
-
 import json
 import os
 from datetime import datetime, timezone
@@ -24,6 +5,7 @@ from typing import Optional
 
 import feedparser 
 from mcp.server.mcpserver import MCPServer
+from mcp_server_tracker import track
 import socket
 import socket
 
@@ -83,6 +65,7 @@ def _save_bookmarks(bookmarks: list[dict]) -> None:
 # header below this one so the file stays organized as it grows.)
 
 @mcp.tool()
+@track
 def get_latest_news(category: str = "AI", limit: int = 10) -> list[dict]:
     """
     Fetch the latest headlines for a category.
@@ -107,6 +90,7 @@ def get_latest_news(category: str = "AI", limit: int = 10) -> list[dict]:
 
 
 @mcp.tool()
+@track
 def save_news(title: str, link: str, source: str = "", category: str = "AI") -> str:
     
     # it saves the news titles and links in the bookmarks.json file in the same directory as this script.
@@ -128,6 +112,7 @@ def save_news(title: str, link: str, source: str = "", category: str = "AI") -> 
 
 
 @mcp.tool()
+@track
 def list_saved_news(query: Optional[str] = None) -> list[dict]:
     
     # List saved news items, optionally filtering by a search query.
@@ -144,6 +129,7 @@ def list_saved_news(query: Optional[str] = None) -> list[dict]:
 
 
 @mcp.tool()
+@track
 def remove_saved_news(link: str) -> str:
     
     # Un-star a previously saved news item.
@@ -160,6 +146,7 @@ def remove_saved_news(link: str) -> str:
 
 
 @mcp.tool()
+@track
 def list_categories() -> list[str]:
     # List the news categories available (matches the widget's category slider).
     return list(FEEDS.keys())
@@ -191,12 +178,14 @@ def _ask(prompt: str, backend: str) -> str:
 
 
 @mcp.tool()
+@track
 def check_connectivity() -> dict:
     """Report online status and which backend ai_chat() would use."""
     online = _is_online()
     return {"online": online, "would_use": "gemini" if online and GEMINI_API_KEY else "ollama"}
 
 @mcp.tool()
+@track
 def ai_chat(prompt: str, force_offline: bool = False) -> dict:
     """Chat via Gemini if online, else fall back to local Ollama."""
     note = None
