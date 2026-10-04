@@ -1,3 +1,5 @@
+"""Personal MCP Server — exposes personal projects as MCP tools."""
+
 import json
 import os
 from datetime import datetime, timezone
@@ -6,7 +8,6 @@ from typing import Optional
 import feedparser 
 from mcp.server.mcpserver import MCPServer
 from mcp_server_tracker import track
-import socket
 import socket
 
 try:
