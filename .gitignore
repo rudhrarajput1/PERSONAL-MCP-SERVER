@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 bookmarks.json
 .env
+mcp_activity.log
