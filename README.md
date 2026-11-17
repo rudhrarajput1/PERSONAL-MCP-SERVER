@@ -60,7 +60,8 @@ Personal MCP Server (Python)
   multi-step reasoning — fine for quick lookups, not a full
   replacement.
 - News fetching depends on the upstream RSS feeds staying available
-  and unchanged; no retry/backoff logic yet.
+  and unchanged; a dead/unreachable feed returns a clear error object
+  instead of failing silently, but there's no retry/backoff logic yet.
 - Connectivity check is a best-effort DNS probe, not a guarantee the
   Gemini API specifically is reachable.
 
