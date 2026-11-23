@@ -10,19 +10,22 @@ from mcp.server.mcpserver import MCPServer
 from mcp_server_tracker import track
 import socket
 
-try:
-    import ollama
-except ImportError:
-    ollama = None
+import urllib.request
+import urllib.error
 
-try:
-    from google import genai as google_genai
-except ImportError:
-    google_genai = None
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-2.0-flash"
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3")
+# Online backend — any OpenAI-compatible API (OpenAI, Gemini's compatible
+# endpoint, Groq, together.ai, etc.). Leave ONLINE_API_KEY unset to disable
+# the online path entirely and run fully offline.
+ONLINE_BASE_URL = os.environ.get("ONLINE_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+ONLINE_API_KEY = os.environ.get("ONLINE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+ONLINE_MODEL = os.environ.get("ONLINE_MODEL", "gemini-2.0-flash")
+
+# Offline backend — any OpenAI-compatible local server (Ollama, LM Studio,
+# llama.cpp server, or a custom self-hosted model).
+OFFLINE_BASE_URL = os.environ.get("OFFLINE_BASE_URL", "http://localhost:11434/v1")
+OFFLINE_MODEL = os.environ.get("OFFLINE_MODEL", "llama3:8b")
+
 
 # Config
 
@@ -185,8 +188,7 @@ if __name__ == "__main__":
 
 
 
-#  the claude or any other ai main preference is google gemini using the ollama as a fatch source and import the data from the local ai when asked
-# Tools — Offline AI Fallback (Gemini online, Ollama offline)
+# Tools — Online/Offline AI Fallback (any OpenAI-compatible backend)
 
 
 def _is_online(host="8.8.8.8", port=53, timeout=2.0) -> bool:
@@ -198,16 +200,34 @@ def _is_online(host="8.8.8.8", port=53, timeout=2.0) -> bool:
         return False
 
 
+def _call_openai_compatible(base_url: str, model: str, prompt: str, api_key: Optional[str] = None) -> str:
+    url = base_url.rstrip("/") + "/chat/completions"
+    payload = json.dumps({
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+    }).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data["choices"][0]["message"]["content"]
+
+
 def _ask(prompt: str, backend: str) -> str:
-    if backend == "gemini":
-        client = google_genai.Client(api_key=GEMINI_API_KEY)
-        return client.models.generate_content(model=GEMINI_MODEL, contents=prompt).text
-    if ollama is None:
-        raise RuntimeError(
-            "Ollama backend requested but the 'ollama' package isn't installed "
-            "(pip install ollama), or the Ollama app isn't running."
-        )
-    return ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": prompt}])["message"]["content"]
+    if backend == "online":
+        return _call_openai_compatible(ONLINE_BASE_URL, ONLINE_MODEL, prompt, api_key=ONLINE_API_KEY)
+    return _call_openai_compatible(OFFLINE_BASE_URL, OFFLINE_MODEL, prompt)
+
+
+def _offline_available() -> bool:
+    try:
+        req = urllib.request.Request(OFFLINE_BASE_URL.rstrip("/") + "/models", method="GET")
+        urllib.request.urlopen(req, timeout=2)
+        return True
+    except Exception:
+        return False
 
 
 @mcp.tool()
@@ -215,28 +235,28 @@ def _ask(prompt: str, backend: str) -> str:
 def check_connectivity() -> dict:
     """Report online status and which backend ai_chat() would use."""
     online = _is_online()
-    if online and GEMINI_API_KEY:
-        would_use = "gemini"
-    elif ollama is not None:
-        would_use = "ollama"
+    if online and ONLINE_API_KEY:
+        would_use = "online"
+    elif _offline_available():
+        would_use = "offline"
     else:
-        would_use = "none (Ollama not installed and Gemini unavailable)"
+        would_use = "none (no backend reachable — set ONLINE_API_KEY or start a local server at OFFLINE_BASE_URL)"
     return {"online": online, "would_use": would_use}
 
 
 @mcp.tool()
 @track
 def ai_chat(prompt: str, force_offline: bool = False) -> dict:
-    """Chat via Gemini if online, else fall back to local Ollama."""
+    """Chat via the online backend if available, else fall back to the local offline backend."""
     note = None
-    if not force_offline and GEMINI_API_KEY and _is_online():
+    if not force_offline and ONLINE_API_KEY and _is_online():
         try:
-            return {"backend": "gemini", "response": _ask(prompt, "gemini")}
+            return {"backend": "online", "response": _ask(prompt, "online")}
         except Exception as e:
-            note = f"Gemini failed, used Ollama instead: {e}"
+            note = f"Online backend failed, falling back to offline: {e}"
 
     try:
-        result = {"backend": "ollama", "response": _ask(prompt, "ollama")}
+        result = {"backend": "offline", "response": _ask(prompt, "offline")}
         if note:
             result["note"] = note
         return result
