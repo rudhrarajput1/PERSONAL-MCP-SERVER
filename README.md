@@ -74,7 +74,7 @@ pip install -r requirements.txt
 **Offline AI fallback:**
 - Install [Ollama](https://ollama.com) and pull a model:
   `ollama pull llama3`
-- Set `GEMINI_API_KEY` as an environment variable for the online path
+- Set `ONLINE_API_KEY` as an environment variable for the online path
   (optional — without it, the server always uses Ollama).
 - Optional: set `OLLAMA_MODEL` to use a different local model.
 
