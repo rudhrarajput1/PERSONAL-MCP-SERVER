@@ -25,30 +25,45 @@ def main() -> None:
     print("-> Installing Python dependencies...")
     run([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
 
+    
     # 2. Ollama check + model pull (for offline fallback)
+    # Only required if the user has no online API key — otherwise offline
+    # fallback is optional, so missing Ollama shouldn't block setup.
+    has_online_key = bool(os.environ.get("ONLINE_API_KEY") or os.environ.get("GEMINI_API_KEY"))
+
     if shutil.which("ollama") is None:
-        print(
-            "-> Ollama not found on PATH.\n"
-            "   Install it from https://ollama.com, then re-run this script.\n"
-            "   (Windows: make sure Ollama is installed and the app has been run once\n"
-            "   so 'ollama' is registered on PATH — a terminal restart may be needed.)"
-        )
-        sys.exit(1)
-
-    model = os.environ.get("OLLAMA_MODEL", "llama3")
-    print(f"-> Pulling Ollama model: {model}")
-    run(["ollama", "pull", model])
-
+        if has_online_key:
+            print(
+                "-> Ollama not found on PATH — skipping offline setup.\n"
+                "   You have an online API key set, so the online path will work fine.\n"
+                "   Install Ollama later from https://ollama.com if you want offline fallback too."
+            )
+        else:
+            print(
+                "-> Ollama not found on PATH, and no online API key is set either.\n"
+                "   At least one backend is required. Either:\n"
+                "     - Install Ollama from https://ollama.com, then re-run this script, or\n"
+                "     - Set ONLINE_API_KEY to use the online path instead.\n"
+                "   (Windows: make sure Ollama is installed and the app has been run once\n"
+                "   so 'ollama' is registered on PATH — a terminal restart may be needed.)"
+            )
+            sys.exit(1)
+    else:
+        model = os.environ.get("OLLAMA_MODEL", "llama3:8b")
+        print(f"-> Pulling Ollama model: {model}")
+        run(["ollama", "pull", model])
+        
+        
     # 3. Gemini key (optional)
-    if not os.environ.get("GEMINI_API_KEY"):
+    if not (os.environ.get("ONLINE_API_KEY") or os.environ.get("GEMINI_API_KEY")):
         print(
-            "-> No GEMINI_API_KEY set. The server will run fully offline via Ollama.\n"
+            "-> No ONLINE_API_KEY set. The server will run fully offline via Ollama.\n"
             "   To enable the online Gemini path later:\n"
-            "     Windows (PowerShell): $env:GEMINI_API_KEY = \"your_key\"\n"
-            "     Mac/Linux:             export GEMINI_API_KEY=your_key"
+            "     Windows (PowerShell): $env:ONLINE_API_KEY = \"your_key\"\n"
+            "     Mac/Linux:             export ONLINE_API_KEY=your_key"
         )
     else:
-        print("-> GEMINI_API_KEY detected — online path enabled.")
+        print("-> Online API key detected — online path enabled.")
 
     print("== Setup complete. Run: python personal_mcp_server.py ==")
 
