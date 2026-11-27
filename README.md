@@ -2,8 +2,8 @@
 
 A local MCP server that gives any AI client (Claude Desktop, etc.)
 access to my personal tools — currently an AI news widget and an
-offline-capable AI chat that auto-falls back from Gemini to a local
-Ollama model when the internet dies.
+offline-capable AI chat that can use a configurable OpenAI-compatible
+online API and fall back to Ollama or another configured backend.
 
 > **Why:** I wanted AI tools that work in a flight-mode / dead-Wi-Fi
 > situation without reconfiguring anything.
@@ -16,13 +16,13 @@ MCP Client (Claude Desktop)
        ▼
 Personal MCP Server (Python)
  ├── AI News Widget → [news RSS feeds] → bookmarks.json
- └── AI Chat → [Online?] ──▶ Gemini API
-               └─Offline──▶ Ollama (local model)
+ └── AI Chat → [Online?] ──▶ Configured OpenAI-compatible API
+               └─Offline──▶ Configured local/custom backend
 ```
 
 ## Tech stack
 
-`Python` · `MCP (stdio transport)` · `Google Gemini API` · `Ollama` · `feedparser` · `JSON`
+`Python` · `MCP (stdio transport)` · `OpenAI-compatible APIs` · `Ollama` · `feedparser` · `JSON`
 
 ## Tools exposed
 
@@ -38,7 +38,7 @@ Personal MCP Server (Python)
 ### AI Chat (online/offline fallback)
 | Tool | What it does |
 |---|---|
-| `ai_chat(prompt, force_offline)` | Sends a prompt to Gemini if online, otherwise falls back to a local Ollama model automatically |
+| `ai_chat(prompt, force_offline)` | Sends a prompt to the configured online API if available, otherwise tries the configured local/custom backend |
 | `check_connectivity()` | Reports online status and which backend would currently be used |
 
 ## Why these design choices
@@ -56,14 +56,14 @@ Personal MCP Server (Python)
 
 ## Limitations
 
-- Local model quality is noticeably lower than Gemini's for complex,
+- Local model quality is noticeably lower than a capable remote online model for complex,
   multi-step reasoning — fine for quick lookups, not a full
   replacement.
 - News fetching depends on the upstream RSS feeds staying available
   and unchanged; a dead/unreachable feed returns a clear error object
   instead of failing silently, but there's no retry/backoff logic yet.
-- Connectivity check is a best-effort DNS probe, not a guarantee the
-  Gemini API specifically is reachable.
+- Connectivity check is a best-effort socket probe, not a guarantee that
+  the configured online API is reachable or authenticated.
 
 ## Setup
 
@@ -72,11 +72,13 @@ pip install -r requirements.txt
 ```
 
 **Offline AI fallback:**
-- Install [Ollama](https://ollama.com) and pull a model:
-  `ollama pull llama3`
-- Set `ONLINE_API_KEY` as an environment variable for the online path
-  (optional — without it, the server always uses Ollama).
-- Optional: set `OLLAMA_MODEL` to use a different local model.
+- Default OpenAI-compatible backend: install [Ollama](https://ollama.com), pull a model, and set
+  `OFFLINE_BACKEND_TYPE=openai` (this is the default).
+- Optional variables: `OFFLINE_BASE_URL`, `OFFLINE_MODEL`, or legacy `OLLAMA_MODEL`.
+- Set `ONLINE_API_KEY` as an environment variable for the online path (optional).
+- Custom backend: set `OFFLINE_BACKEND_TYPE=custom` and
+  `OFFLINE_CUSTOM_CMD` to a command that reads the prompt from stdin and prints the answer to stdout.
+  Arguments and executable paths containing spaces should be quoted.
 
 ## Run it
 
