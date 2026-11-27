@@ -2,6 +2,9 @@
 
 import json
 import os
+import shlex
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -25,6 +28,8 @@ ONLINE_MODEL = os.environ.get("ONLINE_MODEL", "gemini-2.0-flash")
 # llama.cpp server, or a custom self-hosted model).
 OFFLINE_BASE_URL = os.environ.get("OFFLINE_BASE_URL", "http://localhost:11434/v1")
 OFFLINE_MODEL = os.environ.get("OFFLINE_MODEL", "llama3:8b")
+OFFLINE_BACKEND_TYPE = os.environ.get("OFFLINE_BACKEND_TYPE", "openai").strip().lower()
+OFFLINE_CUSTOM_CMD = os.environ.get("OFFLINE_CUSTOM_CMD")
 
 
 # Config
@@ -183,11 +188,6 @@ def list_categories() -> list[str]:
     return list(FEEDS.keys())
 
 
-if __name__ == "__main__":
-    mcp.run()
-
-
-
 # Tools — Online/Offline AI Fallback (any OpenAI-compatible backend)
 
 
@@ -218,15 +218,71 @@ def _call_openai_compatible(base_url: str, model: str, prompt: str, api_key: Opt
 def _ask(prompt: str, backend: str) -> str:
     if backend == "online":
         return _call_openai_compatible(ONLINE_BASE_URL, ONLINE_MODEL, prompt, api_key=ONLINE_API_KEY)
+    if OFFLINE_BACKEND_TYPE == "custom":
+        return _call_custom(OFFLINE_CUSTOM_CMD, prompt)
     return _call_openai_compatible(OFFLINE_BASE_URL, OFFLINE_MODEL, prompt)
 
 
+def _call_custom(command: Optional[str], prompt: str) -> str:
+    if not command:
+        raise RuntimeError(
+            "OFFLINE_BACKEND_TYPE=custom requires OFFLINE_CUSTOM_CMD"
+        )
+
+    try:
+        argv = shlex.split(command, posix=(os.name != "nt"))
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid OFFLINE_CUSTOM_CMD: {exc}") from exc
+    if not argv:
+        raise RuntimeError("OFFLINE_CUSTOM_CMD is empty")
+
+    executable = argv[0]
+    if shutil.which(executable) is None:
+        raise RuntimeError(f"Custom backend executable not found: {executable}")
+
+    try:
+        result = subprocess.run(
+            argv,
+            input=prompt,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Custom backend timed out after 30 seconds") from exc
+
+    if result.returncode != 0:
+        error = result.stderr.strip() or f"exit code {result.returncode}"
+        raise RuntimeError(f"Custom backend failed: {error}")
+
+    response = result.stdout.strip()
+    if not response:
+        raise RuntimeError("Custom backend returned no response")
+    return response
+
+
 def _offline_available() -> bool:
+    if OFFLINE_BACKEND_TYPE == "custom":
+        if not OFFLINE_CUSTOM_CMD:
+            return False
+        try:
+            argv = shlex.split(
+                OFFLINE_CUSTOM_CMD,
+                posix=(os.name != "nt"),
+            )
+        except ValueError:
+            return False
+        return bool(argv) and shutil.which(argv[0]) is not None
+
+    if OFFLINE_BACKEND_TYPE != "openai":
+        return False
+
     try:
         req = urllib.request.Request(OFFLINE_BASE_URL.rstrip("/") + "/models", method="GET")
         urllib.request.urlopen(req, timeout=2)
         return True
-    except Exception:
+    except (OSError, urllib.error.URLError, TimeoutError):
         return False
 
 
@@ -237,11 +293,17 @@ def check_connectivity() -> dict:
     online = _is_online()
     if online and ONLINE_API_KEY:
         would_use = "online"
-    elif _offline_available():
+    elif OFFLINE_BACKEND_TYPE == "custom":
+        would_use = "custom" if _offline_available() else "none"
+    elif OFFLINE_BACKEND_TYPE == "openai" and _offline_available():
         would_use = "offline"
     else:
-        would_use = "none (no backend reachable — set ONLINE_API_KEY or start a local server at OFFLINE_BASE_URL)"
-    return {"online": online, "would_use": would_use}
+        would_use = "none"
+    return {
+        "online": online,
+        "would_use": would_use,
+        "offline_backend_type": OFFLINE_BACKEND_TYPE,
+    }
 
 
 @mcp.tool()
@@ -249,6 +311,12 @@ def check_connectivity() -> dict:
 def ai_chat(prompt: str, force_offline: bool = False) -> dict:
     """Chat via the online backend if available, else fall back to the local offline backend."""
     note = None
+    if OFFLINE_BACKEND_TYPE not in {"openai", "custom"}:
+        return {
+            "backend": "none",
+            "error": "OFFLINE_BACKEND_TYPE must be 'openai' or 'custom'",
+        }
+
     if not force_offline and ONLINE_API_KEY and _is_online():
         try:
             return {"backend": "online", "response": _ask(prompt, "online")}
@@ -256,10 +324,14 @@ def ai_chat(prompt: str, force_offline: bool = False) -> dict:
             note = f"Online backend failed, falling back to offline: {e}"
 
     try:
-        result = {"backend": "offline", "response": _ask(prompt, "offline")}
+        backend_name = "custom" if OFFLINE_BACKEND_TYPE == "custom" else "offline"
+        result = {"backend": backend_name, "response": _ask(prompt, "offline")}
         if note:
             result["note"] = note
         return result
     except Exception as e:
         return {"backend": "none", "error": str(e)}
-    
+
+
+if __name__ == "__main__":
+    mcp.run()
