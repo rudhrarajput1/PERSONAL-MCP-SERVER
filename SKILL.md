@@ -78,5 +78,4 @@ $env:OFFLINE_CUSTOM_CMD = "python C:\path\to\custom_backend.py"
   `check_connectivity()` to determine the backend that would be used.
 - A dead/unreachable RSS feed returns `{"error": ...}` instead of an empty list; surface that
   message to the user rather than reporting "no news today."
-- This skill requires the user's own API key for the online path; never ask the user to share
-  it with anyone else or hardcode it anywhere.
+- - An online API key is optional. Never ask the user to share it or hardcode it anywhere.
