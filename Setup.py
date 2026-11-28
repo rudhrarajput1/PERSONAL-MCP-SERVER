@@ -82,7 +82,7 @@ def main() -> None:
     else:
         print("-> Online API key detected — online path enabled.")
 
-    print("== Setup complete. Run: python personal_mcp_server.py ==")
+    print("== Setup complete. Run: python personal_MCP_server.py ==")
 
 
 if __name__ == "__main__":
