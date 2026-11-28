@@ -83,7 +83,7 @@ pip install -r requirements.txt
 ## Run it
 
 ```bash
-python3 personal_mcp_server.py
+python personal_MCP_server.py
 ```
 
 Runs over stdio and waits for an MCP client to connect — no output
