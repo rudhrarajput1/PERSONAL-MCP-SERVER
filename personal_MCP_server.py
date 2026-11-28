@@ -40,14 +40,15 @@ BOOKMARKS_PATH = os.path.join(BASE_DIR, "bookmarks.json")
 
 # Category -> RSS feed URL. Swap these for whatever feeds your widget uses.
 FEEDS = {
-    "AI": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "AI": "https://research.google/blog/rss/",
     "ML": "https://www.technologyreview.com/feed/",
-    "Tech": "https://techcrunch.com/feed/",
+    "Tech": "https://feeds.bbci.co.uk/news/technology/rss.xml",
 }
+FEED_REQUEST_HEADERS = {"User-Agent": "PersonalMCPServer/1.0"}
 
 mcp = MCPServer("personal-MCP-SERVER")
 
-
+ 
 
 # Bookmark storage helpers
 
@@ -84,7 +85,10 @@ def get_latest_news(category: str = "AI", limit: int = 10) -> list[dict]:
         limit: Max number of headlines to return (default 10).
     """
     category = category if category in FEEDS else "AI"
-    feed = feedparser.parse(FEEDS[category])
+    feed = feedparser.parse(
+        FEEDS[category],
+        request_headers=FEED_REQUEST_HEADERS,
+    )
     
     if feed.bozo and not feed.entries:
      reason = getattr(feed, "bozo_exception", "unknown error")
